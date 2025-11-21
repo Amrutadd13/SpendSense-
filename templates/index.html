@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Transaction Categorizer — Prototype</title>
+  <style>
+    :root{
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --muted: #6b7280;
+      --accent: #334155;
+      --accent-2: #0f172a;
+      --primary: #2563eb;
+      --success: #16a34a;
+      --danger: #ef4444;
+      --glass: rgba(255,255,255,0.6);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body { height:100%; margin:0; background: linear-gradient(180deg,#eef2ff 0%, var(--bg) 100%); color:var(--accent-2); }
+    .page { max-width:980px; margin:32px auto; padding:24px; }
+    header { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+    header h1 { margin:0; font-size:20px; letter-spacing: -0.2px; }
+    header p { margin:0; color:var(--muted); font-size:13px; }
+
+    .card { background:var(--card); border-radius:12px; padding:18px; box-shadow: 0 6px 18px rgba(15,23,42,0.06); margin-bottom:18px; }
+    .row { display:flex; gap:12px; align-items:center; }
+    .col { flex:1; }
+
+    .uploader { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .file-input { padding:8px 12px; border-radius:8px; border:1px dashed #e6e9f2; background:linear-gradient(180deg,#fff,#fbfdff); cursor:pointer; }
+    .btn { background:var(--primary); color:white; border:0; padding:9px 14px; border-radius:8px; cursor:pointer; font-weight:600; }
+    .btn.secondary { background:#eef2ff; color:var(--primary); border:1px solid rgba(37,99,235,0.12); }
+    .small { padding:6px 10px; font-size:13px; border-radius:8px; }
+
+    textarea { width:100%; min-height:70px; border-radius:8px; border:1px solid #e6e9f2; padding:10px; resize:vertical; font-size:14px; }
+    .muted { color:var(--muted); font-size:13px; }
+
+    /* Dashboard */
+    .dashboard { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    .stat { background: linear-gradient(180deg,#fff,#fbfdff); padding:10px 12px; border-radius:10px; min-width:140px; box-shadow:0 4px 12px rgba(2,6,23,0.04); }
+    .stat h3 { margin:0; font-size:18px; }
+    .stat p { margin:0; color:var(--muted); font-size:12px; }
+
+    /* Results table */
+    table { width:100%; border-collapse:collapse; margin-top:14px; font-size:14px; }
+    th,td { text-align:left; padding:10px 12px; border-bottom:1px solid #f1f5f9; }
+    th { background:#fafafa; color:var(--muted); font-weight:600; font-size:13px; }
+    tbody tr:hover { background: linear-gradient(90deg,#fbfdff,#ffffff); }
+
+    .center { text-align:center; color:var(--muted); padding:26px 8px; }
+
+    /* loader */
+    .spinner { width:18px; height:18px; border-radius:50%; border:3px solid rgba(0,0,0,0.12); border-top-color:var(--primary); animation:spin 0.9s linear infinite; display:inline-block; margin-right:8px; vertical-align:middle; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* responsive */
+    @media (max-width:680px){ .dashboard{flex-direction:column;} header{flex-direction:column; align-items:flex-start;} }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <h1>Automated Transaction Categorizer — Prototype</h1>
+        <p class="muted">Upload transactions (CSV) or paste a single description → automatic categorization</p>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="row">
+        <div class="col">
+          <div class="uploader">
+            <label class="file-input" id="fileLabel">
+              <input type="file" id="fileInput" accept=".csv" style="display:none" />
+              Choose CSV file
+            </label>
+            <button class="btn small" id="uploadBtn">Upload & Categorize</button>
+            <button class="btn secondary small" id="clearBtn">Clear Results</button>
+            <div id="status" style="margin-left:auto" class="muted"></div>
+          </div>
+
+          <div style="margin-top:14px;">
+            <div class="muted" style="margin-bottom:6px">Or try a single description</div>
+            <textarea id="singleText" placeholder="e.g., Paid Uber to airport"></textarea>
+            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+              <button class="btn" id="singleBtn">Categorize Text</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard" id="dashboard" style="display:none; margin-top:18px">
+        <!-- stats inserted here -->
+      </div>
+
+    </div>
+
+    <div class="card" id="resultsCard" style="display:none;">
+      <h3 style="margin:0 0 6px 0">Categorized Transactions</h3>
+      <div id="resultsContainer">
+        <!-- table inserted here -->
+      </div>
+    </div>
+<div id="emptyMsg" class="center" style="display:none;">No results yet</div>
+
+
+  </div>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const fileLabel = document.getElementById('fileLabel');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const singleBtn = document.getElementById('singleBtn');
+  const singleText = document.getElementById('singleText');
+  const status = document.getElementById('status');
+  const resultsCard = document.getElementById('resultsCard');
+  const resultsContainer = document.getElementById('resultsContainer');
+  const dashboard = document.getElementById('dashboard');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const clearBtn = document.getElementById('clearBtn');
+
+  // show filename when chosen
+  fileLabel.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) {
+      fileLabel.textContent = fileInput.files[0].name;
+    } else {
+      fileLabel.textContent = 'Choose CSV file';
+    }
+  });
+
+  function setLoading(txt = 'Processing...', on=true) {
+    status.innerHTML = on ? `<span class="spinner"></span>${txt}` : '';
+  }
+
+  function showResults(data) {
+    // data can be an array (CSV) or object (single)
+    const rows = Array.isArray(data) ? data : [data];
+    if (!rows.length) {
+      resultsContainer.innerHTML = '<div class="muted">No results</div>';
+      resultsCard.style.display = 'block';
+      emptyMsg.style.display = 'none';
+      return;
+    }
+
+    // build table
+    let html = '<div style="overflow:auto"><table><thead><tr><th>Description</th><th>Amount</th><th>Category</th></tr></thead><tbody>';
+    rows.forEach(r => {
+      const desc = escapeHtml(r.description || r.Description || '');
+      const amt = escapeHtml(r.amount || r.Amount || '');
+      const cat = escapeHtml(r.category || r.Category || '');
+      html += `<tr><td>${desc}</td><td>${amt}</td><td>${cat}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    resultsContainer.innerHTML = html;
+    resultsCard.style.display = 'block';
+    emptyMsg.style.display = 'none';
+
+    // build dashboard counts
+    const counts = {};
+    rows.forEach(r => {
+      const c = (r.category || r.Category || 'Others') || 'Others';
+      counts[c] = (counts[c] || 0) + 1;
+    });
+    // sort categories by count descending
+    const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    let dashHtml = '';
+    entries.forEach(([cat, cnt]) => {
+      dashHtml += `<div class="stat"><h3>${cnt}</h3><p>${escapeHtml(cat)}</p></div>`;
+    });
+    dashboard.innerHTML = dashHtml;
+    dashboard.style.display = 'flex';
+    setLoading('', false);
+  }
+
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>"']/g, function(m) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":"&#39;" })[m];
+    });
+  }
+
+  async function postForm(formData) {
+    setLoading();
+    try {
+      const resp = await fetch('/categorize', { method: 'POST', body: formData });
+      if (!resp.ok) {
+        const j = await resp.json().catch(()=>({error:'Server error'}));
+        setLoading('', false);
+        alert(j.error || 'Server returned an error');
+        return;
+      }
+      const data = await resp.json();
+      showResults(data);
+    } catch (err) {
+      setLoading('', false);
+      alert('Network or server error: ' + err.message);
+    }
+  }
+
+  uploadBtn.addEventListener('click', () => {
+    if (!fileInput.files.length) { alert('Choose a CSV file first'); return; }
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    postForm(fd);
+  });
+
+  singleBtn.addEventListener('click', () => {
+    const t = singleText.value.trim();
+    if (!t) { alert('Enter a description first'); return; }
+    const body = new URLSearchParams();
+    body.append('text', t);
+    setLoading();
+    fetch('/categorize', { method: 'POST', body })
+      .then(r => {
+        if (!r.ok) throw new Error('Server error');
+        return r.json();
+      })
+      .then(json => showResults(json))
+      .catch(err => { setLoading('', false); alert(err.message); });
+  });
+
+  clearBtn.addEventListener('click', () => {
+    resultsContainer.innerHTML = '';
+    resultsCard.style.display = 'none';
+    dashboard.style.display = 'none';
+    emptyMsg.style.display = 'block';
+    fileInput.value = '';
+    fileLabel.textContent = 'Choose CSV file';
+    singleText.value = '';
+    status.innerHTML = '';
+  });
+
+</script>
+</body>
+</html>
